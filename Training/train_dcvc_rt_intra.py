@@ -62,7 +62,9 @@ def _parse_args() -> argparse.Namespace:
     # Data pipeline settings.
     p.add_argument("--patch_size", type=int, default=256)
     p.add_argument("--batch_size", type=int, default=8)
-    p.add_argument("--num_workers", type=int, default=4)
+    # Default to a conservative value to avoid DataLoader worker oversubscription warnings/freezes
+    # on small VMs / notebooks. You can increase this on larger machines.
+    p.add_argument("--num_workers", type=int, default=2)
 
     # Optimizer and objective settings.
     p.add_argument("--lr", type=float, default=1e-4)
