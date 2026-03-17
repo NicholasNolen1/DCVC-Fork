@@ -30,6 +30,10 @@ Why YCbCr:
 - The repo’s PNG path converts RGB -> YCbCr before encoding.
 - Training in the same space makes the trained weights behave more like inference.
 
+Small images:
+- Some COCO images are smaller than `--patch_size` (for example 240x320).
+- The loader automatically upsizes images so a crop is always possible.
+
 ## Train
 
 Example:

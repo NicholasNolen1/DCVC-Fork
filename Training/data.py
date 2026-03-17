@@ -57,9 +57,38 @@ def _pil_to_chw_float(pil: Image.Image) -> torch.Tensor:
     """
     if pil.mode != "RGB":
         pil = pil.convert("RGB")
-    x = np.asarray(pil, dtype=np.uint8)  # HWC
+    # `np.asarray(pil)` may return a read-only view. PyTorch warns when converting
+    # non-writable NumPy arrays to tensors. Making a real copy avoids that warning.
+    x = np.array(pil, dtype=np.uint8, copy=True)  # HWC, writable
     x_t = torch.from_numpy(x).to(dtype=torch.float32) / 255.0
     return x_t.permute(2, 0, 1).contiguous()
+
+
+## TODO: experiment with this, may add unwanted bias
+def _resize_pil_to_min_side(pil: Image.Image, min_side: int) -> Image.Image:
+    """
+    Resize an image so that its shorter side is at least `min_side`.
+
+    Why we do this:
+    - Some datasets (including COCO) contain small images (e.g. 240x320).
+    - Our training pipeline takes random crops of size `patch_size`.
+    - Resizing avoids crashing when an image is smaller than the crop.
+    """
+    w, h = pil.size
+    if min(w, h) >= min_side:
+        return pil
+
+    scale = float(min_side) / float(min(w, h))
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+
+    # Pillow renamed resampling enums in newer versions.
+    try:
+        resample = Image.Resampling.BICUBIC  # type: ignore[attr-defined]
+    except Exception:  # pylint: disable=broad-exception-caught
+        resample = Image.BICUBIC
+
+    return pil.resize((new_w, new_h), resample=resample)
 
 
 def _random_crop(x: torch.Tensor, patch_size: int, generator: Optional[torch.Generator]) -> torch.Tensor:
@@ -152,6 +181,8 @@ class ImageFolderPatches(Dataset[torch.Tensor]):
         # Each item is one *random patch* from one image file.
         p = self.files[int(idx)]
         with Image.open(p) as im:
+            # Make sure the image is large enough before cropping.
+            im = _resize_pil_to_min_side(im, self.cfg.patch_size)
             x = _pil_to_chw_float(im)
 
         # Random crop is the main "augmentation" here.
